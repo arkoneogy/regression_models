@@ -1,0 +1,136 @@
+---
+title: "Mileage Analysis on mtcars Data"
+author: "Arkosnato Neogy"
+date: "Saturday 23 May 2015"
+output: pdf_document
+---
+
+# Executive Summary
+
+An analysis of the `mtcars` dataset shows that mileage is affected by several variables, including but not limited to transmission mode. Overall, manual transmission appears to give a higher mileage by about 7 miles per gallon. However, this variation can also be explained by other variables; for example, after adjusting for the effect of weight, no significant variation is left between the mileages of the 2 transmission modes. Therefore, it is not possible on the basis of this data to draw a *causal inference* on the effect of transmission mode on mileage.
+
+# Analysis Details
+
+In this report we attempt to investigate the effect of transmission mode (automatic or manual) on the mileage (in miles per gallon) of cars. This investigation will be based on the `mtcars` dataset from Motor Trend.
+
+
+```{r, include=FALSE}
+library(data.table)
+library(ggplot2)
+
+
+# load and prepare data
+data(mtcars)
+dt= mtcars
+dt$car_make= rownames(mtcars)
+dt= data.table(dt)
+dt[, am:= as.factor(am)]
+```
+
+## Exploratory Plots
+
+We initiate the analysis by looking at some basic plots that show the distribution of mileage for a given transmission mode. Fig.1 shows basic scatter plots of the data columns in `mtcars`. Fig.2 shows notched box plots of the mileage for the two transmission modes. Fig.3 shows the milage figures against cylinder count for each transmission mode. 
+
+From these plots a few inferences may be drawn. Firstly, Fig.1 evidences that mileage is affected by several variables (most significantlt wt, disp, hp, cyl) and not just transmission (am). The boxplot shows that on an average, manual transmission cars have higher mileage than automatic transmission. This analysis has the caveat that other variables are *not held constant* and therefore this can be called an *observational* but not *inferential* statement. As an example, we see that mileage can also thought to be explained by cylinder count in Fig.3 for a given transmission mode. Fig.2 further shows that the data can be thought to be approximately normally distributed but the variances are definitely not equal. 
+
+
+## Hypothesis Testing
+
+We can run a t-test to try to quantify the difference in means between automatic and manual transmission cars. In the following test, automatic transmission is treated treatment while manual is the reference. The test shows that manual transmission cars have a clearly higher mileage at 5% significance level of the t-test by about 7 miles per gallon. Note however that in this t-test other variables are not held constant, so this cannot be inferred as a causal explanation of the mileage.
+
+```{r, echo=FALSE}
+t.test(mpg ~ am , data= dt, paired= F, var.equal = F)
+```
+
+
+## Factor Regression Models
+
+To investigate this issue further we build regression models on mileage on transmission mode (as a factor), but we include, in turns, some of the key variables as evidenced in the scatter plots in Fig.1. The following panels show the details of the models, while their plots (modeled and marginal effects) are shown in the appendix
+
+```{r, echo=FALSE}
+f0= lm(mpg ~ wt + factor(am), data= dt)
+summary(f0)$coef
+
+f1= lm(mpg ~ drat + factor(am), data= dt)
+summary(f1)$coef
+
+f2= lm(mpg ~ disp + factor(am), data= dt)
+summary(f2)$coef
+```
+
+From these figures, it is clear that `wt`, `drat` and `disp` can individually explain the mileage quite well (especially `wt`). The difference in means that is visible without adjusting for the added variables (marked by horizontal lines) is either absent or not significant after the adjustment has been made (visible from the intercepts of the regression lines for two the transmission modes). 
+
+Further we show the residual plot for the best model (of `wt + factor(am)`). From the residuals it appears that the model is a reaosnably good fit through there is a slightly parabolic trend in the residuals, potentially indicating the need of a square term in `wt`. 
+
+
+## Conclusions
+
+Therefore, while it is possible to say at an *observational* level that manual transmission cars have higher mileage than automatic, and the difference can be quantified through a t-test, we do not have sufficient data to conclude at an *inferential* level whether transmission mode *causes* a change in mileage. 
+
+
+# Appendix 
+
+```{r, echo=FALSE, fig.height=3, fig.width= 5}
+pairs(mtcars[,1:6], main= 'Fig.1: Scatter plot on mtcars data')
+```
+
+```{r, echo=FALSE, fig.height=3, fig.width= 5, fig.align='center'}
+options(warn= -1)
+boxplot(mpg ~ am, data= dt, notch= T,
+        col=(c("gold","darkgreen")),
+        main="Fig.2 Mileage vs Transmission", 
+        ylab= "Mileage",
+        xlab="Transmission Mode: 0 (auto) and 1 (manual)") 
+```
+
+```{r, echo=FALSE, fig.height= 3.5, fig.width= 5, fig.align='center'}
+coplot(mpg ~ cyl | am, data = dt, panel = panel.smooth,
+       xlab = "Fig.3: Mileage vs Cylinder count given a transmission mode")
+
+```
+
+
+```{r, echo=FALSE}
+# plot modeled output
+plotAnalyze= function(dt, f0, var, pos= 'topright')
+{
+  dt= copy(dt)
+  setnames(dt, var, 'var')
+  dt0= dt[am==0]
+  dt1= dt[am==1]
+  
+  plot(x= dt$var, y= dt$mpg, type='n', frame=F, ylim= c(5,35),
+       main = paste('Effect of Transmission after adjusting for', var), 
+       ylab= 'Mileage', xlab= var)
+  
+  abline(h= mean(dt0$mpg), lwd= 2)
+  abline(h= mean(dt1$mpg), lwd= 2)
+  abline(coef(f0)[1], coef(f0)[2], lwd= 2)
+  abline(coef(f0)[1] + coef(f0)[3], coef(f0)[2], lwd= 2)
+  
+  points(dt0$var, dt0$mpg, pch= 21, col= 'black', bg= 'lightblue', cex= 2)
+  points(dt1$var, dt1$mpg, pch= 21, col= 'black', bg= 'salmon', cex= 2)
+  legend(pos, legend= c('automatic', 'manual'), 
+         cex= 0.8, fill= c('lightblue', 'salmon'))
+}
+```
+
+```{r, echo=FALSE, fig.height=4, fig.width= 6, fig.align= "center"}
+plotAnalyze(dt, f0, 'wt')
+```
+
+```{r, echo=FALSE, fig.height=4, fig.width= 6, fig.align= "center"}
+plotAnalyze(dt, f1, 'drat')
+```
+
+```{r, echo=FALSE, fig.height=4, fig.width= 6, fig.align= "center"}
+plotAnalyze(dt, f2, 'disp')
+```
+
+
+```{r, echo=FALSE, fig.height=3, fig.width= 5, fig.align= "center"}
+plot(predict(f0), resid(f0), pch= 21, col= 'black', bg= 'salmon', cex= 2,
+     main= 'Residual plot for model with wt and am',
+     xlab= 'Predicted values', ylab= 'Residuals')
+abline(h= 0, lwd= 2, col= 'lightblue')
+```
